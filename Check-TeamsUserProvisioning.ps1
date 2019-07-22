@@ -40,7 +40,8 @@ Param (
     [Parameter(mandatory = $false)][String]$UPN,
     [Parameter(mandatory = $false)][String]$ImportUserCSV,
     [Parameter(mandatory = $false)][Switch]$IncludeDeleted,
-    [Parameter(mandatory = $false)][string]$OverrideAdminDomain
+    [Parameter(mandatory = $false)][string]$OverrideAdminDomain,
+    [Parameter(mandatory= $false)][switch]$DoNotCreateSessions
 
 )
 
@@ -202,6 +203,11 @@ Write-Host "`n------------------------------------------------------------------
 CheckModuleInstalled -module SkypeOnlineConnector -moduleName "Skype for Business Online module"
 CheckModuleInstalled -module AzureAD -moduleName "Azure AD v2 module"
 
+# Do not try to create sessions to SfB and Azure AD
+if (!$DoNotCreateSessions) {
+
+Write-Host "Using existing PowerShell sessions (outside of script)..."
+
 # Is a SfB session already in place and is it "Opened"?
 if (!$global:SfBPSSession -or $global:SfBPSSession.State -ne "Opened") {
 
@@ -231,6 +237,8 @@ if (!$global:SfBPSSession -or $global:SfBPSSession.State -ne "Opened") {
 else {
 
     Write-Host "`r`nAlready connected to SfB and Azure AD..."
+
+}
 
 }
 
