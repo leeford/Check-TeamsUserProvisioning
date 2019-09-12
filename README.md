@@ -35,6 +35,9 @@ To include deleted (unassigned) plans add to command:
 
 ```.\Check-TeamsUserProvisioning.ps1 -UPN user@domain.com -IncludeDeleted```
 
+To exports errors to a path:
+```.\Check-TeamsUserProvisioning.ps1 -ImportUserCSV .\Users.csv -ExportErrorPath c:\temp\errors```
+
 Upon running the tool, for each user their Azure AD and Teams/SfB status will be outputted to the console. At the end of the script any issues will be provided.
 
 ![](https://www.lee-ford.co.uk/images/provisioning-check/PendingAzure.png)
