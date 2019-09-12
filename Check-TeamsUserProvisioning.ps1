@@ -29,9 +29,12 @@
 
     .\Check-TeamsUserProvisioning.ps1 -ImportUserCSV .\Users.csv
 
-    To include deleted (unassigned) plans add to command:
+    To include deleted (unassigned) plans:
 
     .\Check-TeamsUserProvisioning.ps1 -UPN user@domain.com -IncludeDeleted
+
+    To exports errors to a path:
+    .\Check-TeamsUserProvisioning.ps1 -ImportUserCSV .\Users.csv -ExportErrorPath c:\temp\errors
         
 #>
 
@@ -41,7 +44,8 @@ Param (
     [Parameter(mandatory = $false)][String]$ImportUserCSV,
     [Parameter(mandatory = $false)][Switch]$IncludeDeleted,
     [Parameter(mandatory = $false)][string]$OverrideAdminDomain,
-    [Parameter(mandatory= $false)][switch]$DoNotCreateSessions
+    [Parameter(mandatory = $false)][switch]$DoNotCreateSessions,
+    [Parameter(mandatory = $false)][String]$ExportErrorPath
 
 )
 
@@ -206,39 +210,39 @@ CheckModuleInstalled -module AzureAD -moduleName "Azure AD v2 module"
 # Do not try to create sessions to SfB and Azure AD
 if (!$DoNotCreateSessions) {
 
-Write-Host "Using existing PowerShell sessions (outside of script)..."
+    Write-Host "Using existing PowerShell sessions (outside of script)..."
 
-# Is a SfB session already in place and is it "Opened"?
-if (!$global:SfBPSSession -or $global:SfBPSSession.State -ne "Opened") {
+    # Is a SfB session already in place and is it "Opened"?
+    if (!$global:SfBPSSession -or $global:SfBPSSession.State -ne "Opened") {
 
-    $username = Read-Host -Prompt "`r`nPlease enter your user principal name (ex. User@Domain.Com) to sign in to SfB and Azure AD PowerShell"
+        $username = Read-Host -Prompt "`r`nPlease enter your user principal name (ex. User@Domain.Com) to sign in to SfB and Azure AD PowerShell"
 
-    Write-Host "`r`nSign in to SfB using prompt..."
+        Write-Host "`r`nSign in to SfB using prompt..."
 
-    if ($OverrideAdminDomain) {
+        if ($OverrideAdminDomain) {
 
-        $global:SfBPSSession = New-CsOnlineSession -OverrideAdminDomain $OverrideAdminDomain -UserName $username
+            $global:SfBPSSession = New-CsOnlineSession -OverrideAdminDomain $OverrideAdminDomain -UserName $username
+
+        }
+        else {
+
+            $global:SfBPSSession = New-CsOnlineSession -UserName $username
+
+        }
+    
+        # Import Session
+        Import-PSSession $global:SfBPSSession -AllowClobber | Out-Null
+
+        # Connect to Azure AD
+        Write-Host "`r`nSign in to Azure AD using prompt (if required)..."
+        Connect-AzureAD -AccountId $username | Out-Null
 
     }
     else {
 
-        $global:SfBPSSession = New-CsOnlineSession -UserName $username
+        Write-Host "`r`nAlready connected to SfB and Azure AD..."
 
     }
-    
-    # Import Session
-    Import-PSSession $global:SfBPSSession -AllowClobber | Out-Null
-
-    # Connect to Azure AD
-    Write-Host "`r`nSign in to Azure AD using prompt (if required)..."
-    Connect-AzureAD -AccountId $username | Out-Null
-
-}
-else {
-
-    Write-Host "`r`nAlready connected to SfB and Azure AD..."
-
-}
 
 }
 
@@ -282,6 +286,13 @@ if ($script:AzureADLicenseIssues) {
     Write-Host "`r`nThe following potential Azure AD licensing issues were found:" -ForegroundColor Red -BackgroundColor Black
     $script:AzureADLicenseIssues | Format-Table
 
+    if ($ExportErrorPath) {
+
+        Write-Host "Exporting Azure AD License Errors to $ExportErrorPath\AzureADLicenseErrors.csv"
+        $script:AzureADLicenseIssues | Export-Csv -Path "$ExportErrorPath\AzureADLicenseErrors.csv" -NoTypeInformation
+
+    }
+
 }
 else {
 
@@ -293,6 +304,13 @@ if ($script:SfBLicenseIssues) {
 
     Write-Host "`r`nThe following potential Teams/SfB licensing issues were found:" -ForegroundColor Red -BackgroundColor Black
     $script:SfBLicenseIssues | Format-Table
+
+    if ($ExportErrorPath) {
+
+        Write-Host "Exporting SfB Licenses Errors to $ExportErrorPath\SfBLicenseErrors.csv"
+        $script:SfBLicenseIssues | Export-Csv -Path "$ExportErrorPath\SfBLicenseErrors.csv" -NoTypeInformation
+
+    }
 
 }
 else {
