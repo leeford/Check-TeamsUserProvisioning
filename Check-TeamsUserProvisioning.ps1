@@ -1,7 +1,7 @@
 <# 
 .SYNOPSIS
  
-    Check-TeamsUserProvisioning.ps1 - Check Provisioning Status of SfB and Teams Users
+    Check-TeamsUserProvisioning.ps1 - Check Provisioning Status of Teams Users
  
 .DESCRIPTION
 
@@ -9,7 +9,7 @@
 
     This tool allows you to check the assignment and provisioning status of a single user or batch of users from a CSV file.
 
-    It will first check the user(s) Azure AD assignment for Teams/SfB licenses - this ensures the assigned license in Azure AD has been provisioned (actioned) correctly. Next, it will check the assignment and provisioning of the _actual_ service(s) in Teams/SfB - this is where the delay is normally found.
+    It will first check the user(s) Azure AD assignment for Teams licenses - this ensures the assigned license in Azure AD has been provisioned (actioned) correctly. Next, it will check the assignment and provisioning of the _actual_ service(s) in Teams - this is where the delay is normally found.
 
     Once all users have been checked a summary of potential licensing issues is provided.
 
@@ -44,15 +44,14 @@ Param (
     [Parameter(mandatory = $false)][String]$ImportUserCSV,
     [Parameter(mandatory = $false)][Switch]$IncludeDeleted,
     [Parameter(mandatory = $false)][string]$OverrideAdminDomain,
-    [Parameter(mandatory = $false)][switch]$DoNotCreateSessions,
     [Parameter(mandatory = $false)][String]$ExportErrorPath
 
 )
 
 $script:AzureADLicenseIssues = @()
-$script:SfBLicenseIssues = @()
+$script:TeamsLicenseIssues = @()
 
-function CheckUserLicense {
+function Check-UserLicense {
 
     param (
         
@@ -89,7 +88,7 @@ function CheckUserLicense {
 
         }
 
-        # SfB/Teams
+        # Teams
         $user = Get-CSOnlineUser -Identity $UPN | Select-Object AssignedPlan, ProvisionedPlan
 
         $assingedPlans = @()
@@ -137,14 +136,14 @@ function CheckUserLicense {
                 if ([string]$assingedPlan.AssignedStatus -ne "Enabled" -and [string]$assingedPlan.AssignedStatus -ne "Deleted" -and [string]$assingedPlan.ProvisioningStatus -ne "Enabled" -and [string]$assingedPlan.ProvisioningStatus -ne "Deleted") {
             
                     # Potential Licensing Issue
-                    $SfBLicenseIssue = @{ }
-                    $SfBLicenseIssue.UPN = $UPN
-                    $SfBLicenseIssue.ProvisioningStatus = $assingedPlan.ProvisioningStatus
-                    $SfBLicenseIssue.AssignedStatus = $assingedPlan.AssignedStatus
-                    $SfBLicenseIssue.SubscribedPlanId = $assignedPlanId
-                    $SfBLicenseIssue.LicensePlan = $assignedPlan
+                    $TeamsLicenseIssue = @{ }
+                    $TeamsLicenseIssue.UPN = $UPN
+                    $TeamsLicenseIssue.ProvisioningStatus = $assingedPlan.ProvisioningStatus
+                    $TeamsLicenseIssue.AssignedStatus = $assingedPlan.AssignedStatus
+                    $TeamsLicenseIssue.SubscribedPlanId = $assignedPlanId
+                    $TeamsLicenseIssue.LicensePlan = $assignedPlan
     
-                    $script:SfBLicenseIssues += New-Object PSObject -Property $SfBLicenseIssue
+                    $script:TeamsLicenseIssues += New-Object PSObject -Property $TeamsLicenseIssue
     
                 }
 
@@ -152,7 +151,7 @@ function CheckUserLicense {
 
         }
 
-        Write-Host "`n`rSfB/Teams Assignment and Provisioning Status for $UPN..." -ForegroundColor DarkMagenta -BackgroundColor Black
+        Write-Host "`n`rTeams Assignment and Provisioning Status for $UPN..." -ForegroundColor DarkMagenta -BackgroundColor Black
 
         $assingedPlans | Sort-Object -Property LicensePlan | Format-Table
 
@@ -171,7 +170,7 @@ function CheckUserLicense {
     
 }
 
-function CheckModuleInstalled {
+function Check-ModuleInstalled {
     param (
 
         [Parameter (mandatory = $true)][String]$module,
@@ -197,52 +196,55 @@ function CheckModuleInstalled {
     
 }
 
+function Check-ExistingPSSession {
+    param (
+        [Parameter (mandatory = $true)][string]$ComputerName
+    )
+    
+    $OpenSessions = Get-PSSession | Where-Object { $_.ComputerName -like $ComputerName -and $_.State -eq "Opened" }
+
+    return $OpenSessions
+
+}
+
 # Start
 Write-Host "`n----------------------------------------------------------------------------------------------
             `n Check-TeamsUserProvisioning.ps1 - Lee Ford - https://www.lee-ford.co.uk
             `n----------------------------------------------------------------------------------------------" -ForegroundColor Yellow
 
 
-# Check Azure AD and SfB modules installed
-CheckModuleInstalled -module SkypeOnlineConnector -moduleName "Skype for Business Online module"
-CheckModuleInstalled -module AzureAD -moduleName "Azure AD v2 module"
+# Check Azure AD and Teams modules installed
+Check-ModuleInstalled -module MicrosoftTeams -moduleName "Microsoft Teams module"
+Check-ModuleInstalled -module AzureAD -moduleName "AzureAD v2 module"
 
-# Do not try to create sessions to SfB and Azure AD
-if (!$DoNotCreateSessions) {
+$Connected = Check-ExistingPSSession -ComputerName "api.interfaces.records.teams.microsoft.com"
 
-    Write-Host "Using existing PowerShell sessions (outside of script)..."
+if (!$Connected) {
 
-    # Is a SfB session already in place and is it "Opened"?
-    if (!$global:SfBPSSession -or $global:SfBPSSession.State -ne "Opened") {
+    Write-Host "No existing PowerShell Sessions..."
+    Write-Host "`r`nSign in to Teams using prompt (this may appear behind this terminal)..."
+    if ($OverrideAdminDomain) {
 
-        $username = Read-Host -Prompt "`r`nPlease enter your user principal name (ex. User@Domain.Com) to sign in to SfB and Azure AD PowerShell"
-
-        Write-Host "`r`nSign in to SfB using prompt..."
-
-        if ($OverrideAdminDomain) {
-
-            $global:SfBPSSession = New-CsOnlineSession -OverrideAdminDomain $OverrideAdminDomain -UserName $username
-
-        }
-        else {
-
-            $global:SfBPSSession = New-CsOnlineSession -UserName $username
-
-        }
-    
-        # Import Session
-        Import-PSSession $global:SfBPSSession -AllowClobber | Out-Null
-
-        # Connect to Azure AD
-        Write-Host "`r`nSign in to Azure AD using prompt (if required)..."
-        Connect-AzureAD -AccountId $username | Out-Null
+        $CSSession = New-CsOnlineSession -OverrideAdminDomain $OverrideAdminDomain
 
     }
     else {
 
-        Write-Host "`r`nAlready connected to SfB and Azure AD..."
+        $CSSession = New-CsOnlineSession
 
     }
+
+    # Import Session
+    Import-PSSession $CSSession -AllowClobber
+
+    # Connect to Azure AD
+    Write-Host "`r`nSign in to AzureAD using prompt (this may appear behind this terminal)..."
+    Connect-AzureAD
+
+}
+else {
+
+    Write-Host "Using existing PowerShell Sessions..."
 
 }
 
@@ -261,14 +263,14 @@ if ($ImportUserCSV) {
         # Progress
         Write-Progress -Activity "Checking Users" -Status "Checking User $counter of $userCount" -CurrentOperation $_.UPN -PercentComplete (($counter / $userCount) * 100)
 
-        CheckUserLicense -UPN $_.UPN
+        Check-UserLicense -UPN $_.UPN
     
     }
 
 }
 elseif ($UPN) {
 
-    CheckUserLicense -UPN $UPN
+    Check-UserLicense -UPN $UPN
 
 }
 else {
@@ -283,38 +285,38 @@ Write-Host "`n------------------------------------------------------------------
 
 if ($script:AzureADLicenseIssues) {
 
-    Write-Host "`r`nThe following potential Azure AD licensing issues were found:" -ForegroundColor Red -BackgroundColor Black
+    Write-Host "`r`nThe following potential Azure AD licensing issues were found:" -ForegroundColor Red
     $script:AzureADLicenseIssues | Format-Table
 
     if ($ExportErrorPath) {
 
-        Write-Host "Exporting Azure AD License Errors to $ExportErrorPath\AzureADLicenseErrors.csv"
-        $script:AzureADLicenseIssues | Export-Csv -Path "$ExportErrorPath\AzureADLicenseErrors.csv" -NoTypeInformation
+        Write-Host "Exporting Azure AD License Errors to $ExportErrorPath/AzureADLicenseErrors.csv"
+        $script:AzureADLicenseIssues | Export-Csv -Path "$ExportErrorPath/AzureADLicenseErrors.csv" -NoTypeInformation
 
     }
 
 }
 else {
 
-    Write-Host "`r`nNo Azure AD licensing issues were found." -ForegroundColor Green -BackgroundColor Black
+    Write-Host "`r`nNo Azure AD licensing issues were found." -ForegroundColor Green
 
 }
 
-if ($script:SfBLicenseIssues) {
+if ($script:TeamsLicenseIssues) {
 
-    Write-Host "`r`nThe following potential Teams/SfB licensing issues were found:" -ForegroundColor Red -BackgroundColor Black
-    $script:SfBLicenseIssues | Format-Table
+    Write-Host "`r`nThe following potential Teams licensing issues were found:" -ForegroundColor Red
+    $script:TeamsLicenseIssues | Format-Table
 
     if ($ExportErrorPath) {
 
-        Write-Host "Exporting SfB Licenses Errors to $ExportErrorPath\SfBLicenseErrors.csv"
-        $script:SfBLicenseIssues | Export-Csv -Path "$ExportErrorPath\SfBLicenseErrors.csv" -NoTypeInformation
+        Write-Host "Exporting Teams Licenses Errors to $ExportErrorPath/TeamsLicenseErrors.csv"
+        $script:TeamsLicenseIssues | Export-Csv -Path "$ExportErrorPath/TeamsLicenseErrors.csv" -NoTypeInformation
 
     }
 
 }
 else {
 
-    Write-Host "`r`nNo Teams/SfB licensing issues were found." -ForegroundColor Green -BackgroundColor Black
+    Write-Host "`r`nNo Teams licensing issues were found." -ForegroundColor Green
 
 }
