@@ -22,7 +22,7 @@ This tool will not fix any provisioning or assignment issues for you. It is here
 
 ## Usage
 
-> Before you can use this tool you need to ensure you have the Microsoft Teams and Azure AD (v2) PowerShell modules installed.
+> Before you can use this tool you need to ensure you have the Microsoft Teams and Azure AD (v2) PowerShell modules installed. As AzureAD v2 module does not support PowerShell Core, this script currently only works on Windows Powershell
 
 The script can be ran to check a single user by running:
 
