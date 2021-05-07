@@ -223,19 +223,8 @@ if (!$Connected) {
 
     Write-Host "No existing PowerShell Sessions..."
     Write-Host "`r`nSign in to Teams using prompt (this may appear behind this terminal)..."
-    if ($OverrideAdminDomain) {
 
-        $CSSession = New-CsOnlineSession -OverrideAdminDomain $OverrideAdminDomain
-
-    }
-    else {
-
-        $CSSession = New-CsOnlineSession
-
-    }
-
-    # Import Session
-    Import-PSSession $CSSession -AllowClobber
+    Connect-MicrosoftTeams
 
     # Connect to Azure AD
     Write-Host "`r`nSign in to AzureAD using prompt (this may appear behind this terminal)..."
